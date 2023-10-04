@@ -25,6 +25,16 @@ void ABaseGeometryActor::BeginPlay()
 	//printStringTypes();
 	//printTypes();
 	printTransform();
+	SetColor(GeometryData.Color);
+	
+	GetWorldTimerManager().SetTimer(TimerHandle,this,&ABaseGeometryActor::OnTimerFired,GeometryData.TimerRate,true);
+	
+}
+
+void ABaseGeometryActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	UE_LOG(LogBaseGeometry,Warning,TEXT("Actor is dead %s"),*GetName());
+	Super::EndPlay(EndPlayReason);
 }
 
 // Called every frame
@@ -32,11 +42,8 @@ void ABaseGeometryActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	FVector CurrentLocation =GetActorLocation();
-	float time=GetWorld()->GetTimeSeconds();
-	CurrentLocation.Z=InitialLocation.Z+Amplitude*FMath::Sin(Frequency*time);
-	
-	SetActorLocation(CurrentLocation);
+	//移动
+	HandleMovement();
 }
 
 void ABaseGeometryActor::printStringTypes()
@@ -52,14 +59,11 @@ void ABaseGeometryActor::printStringTypes()
 	FString Stat = FString::Printf(TEXT("\n All Stat \n %s %s %s "),*WeaponsNumStr,*HealthStr,*IsDeadStr);
 	UE_LOG(LogBaseGeometry,Warning,TEXT("%s"),*Stat);
 
-	GEngine->AddOnScreenDebugMessage(-1,3.0f,FColor::Red,Name);
-	GEngine->AddOnScreenDebugMessage(-1,5.0f,FColor::Green,Stat,true,FVector2D(1.5F,1.5F));
-	
-	//日志
-	UE_LOG(LogBaseGeometry,Error,TEXT("你谁啊"));
-	UE_LOG(LogBaseGeometry,Display,TEXT("一条信息"));
-	UE_LOG(LogBaseGeometry,Error,TEXT("一条信息"));
-	UE_LOG(LogBaseGeometry,Warning,TEXT("一条信息"));
+	if(GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1,3.0f,FColor::Red,Name);
+		GEngine->AddOnScreenDebugMessage(-1,5.0f,FColor::Green,Stat,true,FVector2D(1.5F,1.5F));
+	}
 }
 
 void ABaseGeometryActor::printTypes()
@@ -89,3 +93,57 @@ void ABaseGeometryActor::printTransform()
 	
 	UE_LOG(LogBaseGeometry,Error,TEXT("Transform:%s"),*Transform.ToHumanReadableString());
 }
+
+void ABaseGeometryActor::HandleMovement()
+{
+	//通过枚举选择动作类型
+	switch (GeometryData.MoveType)
+	{
+	case EMovementType::Sin:
+		{
+			FVector CurrentLocation =GetActorLocation();
+			if(GetWorld())
+			{
+				float time=GetWorld()->GetTimeSeconds();
+				CurrentLocation.Z=InitialLocation.Z+GeometryData.Amplitude*FMath::Sin(GeometryData.Frequency*time);
+                	
+				SetActorLocation(CurrentLocation);
+			}
+		}
+		break;
+		//static的动作类型暂不执行操作
+		case EMovementType::Static: break;
+	default: break;
+	}
+}
+
+void ABaseGeometryActor::SetColor(const FLinearColor& Color)
+{
+	if(!BaseMesh) return;
+	//材质
+	UMaterialInstanceDynamic* DynMaterial = BaseMesh->CreateAndSetMaterialInstanceDynamic(0);
+	if(DynMaterial)
+	{
+		DynMaterial->SetVectorParameterValue("Color",Color);
+	}
+}
+
+void ABaseGeometryActor::OnTimerFired()
+{
+	if(++TimerCount <= MaxTimerCount)
+	{
+		const FLinearColor NewColor = FLinearColor::MakeRandomColor();
+		UE_LOG(LogBaseGeometry,Display,TEXT("TimerCount: %i ,Color to Set up: %s"),TimerCount,*NewColor.ToString());
+		SetColor(NewColor);
+		//委托
+		OnColorChanged.Broadcast(NewColor,GetName());
+	}
+	else
+	{
+		UE_LOG(LogBaseGeometry,Warning,TEXT("Timer has been stopped!"))
+		GetWorldTimerManager().ClearTimer(TimerHandle);
+		//委托
+		OnTimerFinished.Broadcast(this);
+	}
+}
+
